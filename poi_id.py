@@ -8,23 +8,46 @@ sys.path.append("../tools/")
 
 from feature_format import featureFormat, targetFeatureSplit
 from tester import dump_classifier_and_data
-features_list = ['poi','salary','exercised_stock_options','total_stock_value','bonus', 'transformed_salary', 'composite_poi_email_data'] # You will need to use more features
+features_list = ['poi','salary','exercised_stock_options','total_stock_value','bonus', 'transformed_salary','composite_poi_email_data']
+#['poi','salary','exercised_stock_options','total_stock_value','bonus', 'transformed_salary']
+#['poi','expenses', 'director_fees', 'deferred_income', 'exercised_stock_options', 'total_payments','bonus']
+
+#['poi','salary','exercised_stock_options','total_stock_value','bonus', 'transformed_salary', 'composite_poi_email_data'] # You will need to use more features
+key_list = ['poi','salary', 'to_messages', 'deferral_payments', 'total_payments', 'exercised_stock_options'
+    , 'bonus', 'restricted_stock', 'shared_receipt_with_poi', 'restricted_stock_deferred'
+    , 'total_stock_value', 'expenses', 'loan_advances', 'from_messages', 'other',
+            'from_this_person_to_poi', 'director_fees', 'deferred_income', 'long_term_incentive'
+    , 'from_poi_to_this_person', 'transformed_salary','composite_email_data','composite_poi_email_data']
 ### Task 1: Select what features you'll use.
 ### features_list is a list of strings, each of which is a feature name.
 ### The first feature must be "poi".
+
+def select_best_features(my_dataset, features_list):
+    from sklearn.cross_validation import train_test_split
+    data = featureFormat(my_dataset, features_list, sort_keys = True)
+    labels, features = targetFeatureSplit(data)
+    features_train, features_test, labels_train, labels_test = \
+    train_test_split(features, labels, test_size=0.75, random_state=42)
+    from sklearn import feature_selection
+    fs = feature_selection.SelectKBest(feature_selection.chi2, k=10)
+    X_train_fs = fs.fit_transform(list(map(abs, features_train)), labels_train)
+    print [features_list[i] for i in np.argsort(fs.scores_)[::-1]]
+
+
 def process_features():
 
-
+    from sklearn.feature_selection import SelectPercentile
 
     ### Load the dictionary containing the dataset
     with open("final_project_dataset.pkl", "r") as data_file:
         data_dict = pickle.load(data_file)
-
+    """
     print data_dict
     for key in data_dict:
         for feature in data_dict[key]:
             if data_dict[key][feature] == 'NaN':
                 data_dict[key][feature] = 0
+    """
 
     ### Task 2: Remove outliers
     ### Task 3: Create new feature(s)
@@ -35,7 +58,14 @@ def process_features():
     from sklearn.preprocessing import MinMaxScaler
 
     df = pd.DataFrame.from_dict(data_dict, orient='index')
-
+    #df['Person'] = df.index
+    df.reset_index(inplace=True)
+    df.replace(to_replace=['NaN'], value=[0], inplace=True)
+    print "Originally the number of features: " + str(len(df.columns))
+    #temporarily used this to use to populate the "key list" above - but needed to not set this as the list does not sort
+    #list appropriately for using the function provided for the code splitting data.
+    #key_list =  list(df)
+    #print key_list
     scaler = MinMaxScaler()
 
     df['transformed_salary'] = scaler.fit_transform(df['salary'].values.reshape(-1,1))
@@ -43,14 +73,16 @@ def process_features():
     Using this upped the Average Precision-recall score I was playing with for metrics, but lowered the
     Accuracy and Precision when I used Naive Bayes.   
     """
-    df['composite_email_data'] = df['to_messages'] + df['from_messages'] \
-                                 + df['from_this_person_to_poi'] + df['from_poi_to_this_person']
-    df['composite_poi_email_data'] = df['from_this_person_to_poi'] + df['from_poi_to_this_person']
-    print df
+    df['composite_email_data'] = abs(df['to_messages'] + df['from_messages'] \
+                                 + df['from_this_person_to_poi'] + df['from_poi_to_this_person'])
+    df['composite_poi_email_data'] = abs(df['from_this_person_to_poi'] + df['from_poi_to_this_person'])
     #Using a subset of transformed salary caused my Naive Bayes classifier to perform worse than having all of the data in.
     #df = df.loc[df['transformed_salary'] > .10]
     my_dataset = df.to_dict(orient='index')
     print df.corr()
+    print len(df.columns)
+    print len(df.index)
+
     return my_dataset
 
 
@@ -99,6 +131,11 @@ def test_features(my_dataset, features_list):
 ### Extract features and labels from dataset for local testing
     data = featureFormat(my_dataset, features_list, sort_keys = True)
     labels, features = targetFeatureSplit(data)
+    from sklearn import feature_selection
+    fs = feature_selection.SelectPercentile(feature_selection.chi2, percentile=20)
+    X_train_fs = fs.fit_transform(list(map(abs, features)), labels)
+
+    print [features_list[i] for i in np.argsort(fs.scores_)[::-1]]
     test_code(features, labels)
 
 def test_code(features, labels):
@@ -116,6 +153,7 @@ def test_code(features, labels):
 def process_poi_id_code():
     clf = create_classifier()
     my_dataset = process_features()
+    select_best_features(my_dataset, key_list)
 
 ### Task 6: Dump your classifier, dataset, and features_list so anyone can
 ### check your results. You do not need to change anything below, but make sure
